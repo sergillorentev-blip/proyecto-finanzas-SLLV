@@ -3,7 +3,6 @@ import yfinance as yf
 from flask_cors import CORS
 
 app = Flask(__name__)
-# Esto permite que tu app de Project IDX pueda leer los datos de este servidor
 CORS(app)
 
 @app.route('/prices')
@@ -12,34 +11,36 @@ def get_prices():
     if not tickers_raw:
         return jsonify({"error": "No se enviaron tickers"}), 400
     
-    tickers = tickers_raw.split(',')
-    
+    tickers = [t.strip() for t in tickers_raw.split(',')]
+    results = []
+
     try:
-        # Descargamos los datos de Yahoo Finance
-        data = yf.download(tickers, period="1d", interval="1m")['Close']
+        # Usamos la lógica de Colab: 5 días para asegurar datos de cierre
+        data = yf.download(tickers, period="5d", interval="1d", group_by='ticker', progress=False)
         
-        results = []
         for ticker in tickers:
             try:
-                # Si es un solo ticker, 'data' es una serie; si son varios, un DataFrame
+                # Lógica dropna() de Colab para saltar el fin de semana
                 if len(tickers) == 1:
-                    price = data.iloc[-1]
+                    series = data['Close'].dropna()
                 else:
-                    price = data[ticker].dropna().iloc[-1]
+                    series = data[ticker]['Close'].dropna()
                 
-                results.append({
-                    "ticker": ticker,
-                    "price": round(float(price), 2),
-                    "error": False
-                })
+                if not series.empty:
+                    price = series.iloc[-1]
+                    results.append({
+                        "ticker": ticker,
+                        "price": round(float(price), 2),
+                        "error": False
+                    })
+                else:
+                    results.append({"ticker": ticker, "price": None, "error": True})
             except:
                 results.append({"ticker": ticker, "price": None, "error": True})
         
         return jsonify(results)
-    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # Render usa el puerto 10000 por defecto
     app.run(host='0.0.0.0', port=10000)
